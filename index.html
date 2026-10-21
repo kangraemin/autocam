@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>무인 캠</title>
+<style>
+  :root { --bg:#f3f1ec; --fg:#1e2328; --mut:#6a6a6a; --line:#d8d4cb; --acc:#d2451e; --blue:#2f5d8a; --card:#fff; --ok:#2e7d4f; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; word-break:keep-all; }
+  main { max-width:1280px; margin:0 auto; padding:18px 16px 40px; }
+  header { display:flex; flex-wrap:wrap; align-items:flex-end; gap:6px 18px; margin-bottom:14px; }
+  header h1 { font-size:28px; margin:0; letter-spacing:-.02em; }
+  header h1 span { color:var(--acc); }
+  header p { margin:0; color:#3b4046; font-size:16px; }
+  .steps { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 14px; padding:0; list-style:none; }
+  .steps li { padding:5px 12px; border-radius:99px; background:#e6e2d9; color:#777; font-size:14px; font-weight:600; }
+  .steps li.on { background:var(--fg); color:#fff; }
+  .steps li.done { background:#d9e6dc; color:var(--ok); }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+  .panel h2 { font-size:16px; margin:0 0 8px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button, select, input { font:inherit; }
+  button { padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--fg); cursor:pointer; font-weight:600; }
+  button.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
+  button.dark { background:var(--fg); color:#fff; border-color:var(--fg); }
+  button:disabled { opacity:.4; cursor:default; }
+  input[type=text], select { padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  input.team { width:110px; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:99px; border:1px solid var(--line); font-size:13px; background:#faf9f6; }
+  .hint { color:var(--mut); font-size:13px; }
+  #stage { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:820px) { #stage { grid-template-columns:1fr; } }
+  .view { position:relative; }
+  .view .lab { font-size:13px; font-weight:700; margin:0 0 4px; }
+  .view .lab small { font-weight:400; color:var(--mut); }
+  canvas { width:100%; background:#22262b; border-radius:8px; display:block; }
+  #pickMsg { position:absolute; left:8px; right:8px; top:30px; background:rgba(210,69,30,.92); color:#fff; padding:6px 10px; border-radius:6px; font-size:14px; font-weight:700; display:none; }
+  #empty { position:absolute; inset:24px 0 0 0; display:flex; align-items:center; justify-content:center; color:#c9c4b8; font-size:15px; pointer-events:none; text-align:center; padding:20px; }
+  progress { width:200px; height:12px; }
+  #scrub { flex:1; min-width:160px; }
+  .score { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .score .num { font-size:22px; font-weight:800; min-width:64px; text-align:center; }
+  .goalA { background:#fff3ee; border-color:#e9b9a6; }
+  .goalB { background:#eef3f9; border-color:#b3c5d9; }
+  #hl { list-style:none; margin:8px 0 0; padding:0; }
+  #hl li { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:7px 0; border-top:1px solid var(--line); }
+  #hl li:first-child { border-top:none; }
+  #hl .t { font-variant-numeric:tabular-nums; font-weight:700; min-width:150px; }
+  #shortBox { display:none; margin-top:10px; }
+  #shortBox canvas { width:180px; border-radius:10px; }
+  .two { display:grid; grid-template-columns:1.3fr 1fr; gap:12px; }
+  @media (max-width:820px) { .two { grid-template-columns:1fr; } }
+  .link { font:13px/1.4 ui-monospace, Menlo, monospace; background:#f6f5f1; border:1px dashed var(--line); border-radius:8px; padding:8px; word-break:break-all; margin-top:8px; }
+  .ex { display:inline-block; background:#fff1c9; color:#7a5a00; border-radius:4px; padding:1px 6px; font-size:12px; font-weight:700; margin-left:4px; }
+  details { margin-top:6px; }
+  summary { cursor:pointer; color:var(--mut); font-size:13px; }
+  footer { margin-top:18px; font-size:12.5px; color:var(--mut); line-height:1.6; }
+  footer b { color:#4a4f55; }
+  #log { font:12px/1.4 ui-monospace, monospace; color:var(--mut); white-space:pre-wrap; max-height:80px; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>무인 <span>캠</span></h1>
+    <p>경기장 전체를 찍어 둔 휴대폰·카메라 영상을, 선수를 따라가는 중계 화면으로 바꿉니다. 설치·가입 없이 이 브라우저 안에서 처리하고, 영상은 서버로 보내지 않습니다.</p>
+  </header>
+  <ol class="steps" id="steps">
+    <li data-k="1">① 영상 넣기</li><li data-k="2">② 코트 네 모서리</li><li data-k="3">③ 분석</li><li data-k="4">④ 중계 화면·득점</li><li data-k="5">⑤ 하이라이트·응원 링크</li>
+  </ol>
+
+  <section class="panel">
+    <h2>① 경기 영상 넣기</h2>
+    <div class="row">
+      <input type="file" id="file" accept="video/*">
+      <span class="hint">또는 예시 영상:</span>
+      <button id="exFutsal">풋살 예시 (45초)</button>
+      <button id="exBasket">농구 예시 (45초)</button>
+      <select id="sport" title="종목">
+        <option value="futsal">풋살·축구</option>
+        <option value="basketball">농구·핸드볼</option>
+        <option value="volleyball">배구 (넓게 보기)</option>
+      </select>
+    </div>
+    <p class="hint" style="margin:6px 0 0">경기장 전체가 한 화면에 들어오게 높은 곳에 고정해서 찍은 영상이 잘 됩니다. 예시 영상은 유튜브 CC BY 영상입니다(아래 출처).</p>
+  </section>
+
+  <section class="panel">
+    <div class="row">
+      <h2 style="margin:0 8px 0 0">② 코트 네 모서리 → ③ 분석</h2>
+      <button id="roiBtn" disabled>코트 4점 다시 찍기</button>
+      <button id="roiAll" disabled>화면 전체 사용</button>
+      <span id="roiState" class="pill">코트: 없음</span>
+      <select id="zoom" title="중계 화면 확대">
+        <option value="">확대: 종목 기본</option>
+        <option value="0.6">1.67배 (원본 폭의 60%)</option>
+        <option value="0.5">2배 (원본 폭의 50%)</option>
+      </select>
+      <button id="analyze" class="primary" disabled>분석 시작</button>
+      <progress id="prog" value="0" max="1"></progress>
+      <span id="speed" class="pill">-</span>
+    </div>
+    <p class="hint" style="margin:6px 0 0">코트 밖 관중·벤치는 네 모서리 안쪽만 보면 걸러집니다. 분석은 녹화본을 끝까지 한 번 훑은 뒤, 0.7초 앞을 미리 보고 카메라를 움직입니다.</p>
+  </section>
+
+  <div id="stage">
+    <div class="view">
+      <div class="lab">원본 <small>초록 = 찾은 선수, 노랑 = 중계 화면이 잘라 낼 범위</small></div>
+      <canvas id="left" width="640" height="360"></canvas>
+      <div id="pickMsg"></div>
+      <div id="empty">영상을 넣거나 예시 영상을 고르세요</div>
+    </div>
+    <div class="view">
+      <div class="lab">중계 화면 <small id="zoomLab">1.67배 확대(원본 폭의 60%), 점수판 자막</small></div>
+      <canvas id="right" width="960" height="540"></canvas>
+    </div>
+  </div>
+
+  <section class="panel" style="margin-top:10px">
+    <div class="row">
+      <button id="play" class="dark" disabled>▶ 재생</button>
+      <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" disabled>
+      <span id="clock" class="pill">0:00</span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="score">
+        <input type="text" class="team" id="nameA" value="빨강">
+        <button id="goalA" class="goalA" disabled>득점 +1</button>
+        <span class="num" id="scoreNow">0 : 0</span>
+        <button id="goalB" class="goalB" disabled>득점 +1</button>
+        <input type="text" class="team" id="nameB" value="검정">
+        <button id="undo" disabled>마지막 득점 취소</button>
+      </div>
+    </div>
+    <p class="hint" style="margin:6px 0 0">재생하다 골이 들어가면 그 팀 버튼을 누르세요. 점수판이 그 순간부터 바뀌고, 득점 12초 전부터 3초 뒤까지가 하이라이트가 됩니다.</p>
+  </section>
+
+  <div class="two">
+    <section class="panel">
+      <h2>⑤ 하이라이트 (세로 9:16)</h2>
+      <div class="row"><button id="recAll" disabled>중계 화면 전체 저장</button><span class="hint">실제 재생 속도로 녹화합니다.</span></div>
+      <ul id="hl"><li class="hint">득점을 표시하면 여기에 생깁니다.</li></ul>
+      <div id="shortBox"><div class="hint">녹화 중인 세로 클립</div><canvas id="shortCv" width="540" height="960"></canvas></div>
+    </section>
+    <section class="panel">
+      <h2>시군 응원 링크 <span class="ex">예시</span></h2>
+      <div class="row">
+        <select id="cityA"></select><span>vs</span><select id="cityB"></select>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="event" value="학교스포츠클럽 풋살" style="flex:1;min-width:160px">
+        <button id="mkLink" disabled>응원 링크 만들기</button>
+      </div>
+      <div id="linkOut" class="link" style="display:none"></div>
+      <p class="hint" style="margin:8px 0 0">시제품에는 공유 서버가 없어 링크를 만든 기기에서만 열리는 예시 화면입니다. 링크에는 팀·점수·득점 시각이 담기고, 농구 예시는 미리 만들어 둔 세로 클립을 함께 보여 줍니다.</p>
+    </section>
+  </div>
+
+  <details><summary>처리 기록</summary><div id="log"></div></details>
+
+  <footer>
+    <div><b>사람 인식 모델</b> COCO-SSD (lite_mobilenet_v2, TensorFlow.js, Apache-2.0). 모델 파일은 처음 한 번 내려받고, 영상 프레임은 이 기기 안에서만 계산합니다.</div>
+    <div><b>예시 영상 출처 (CC BY 3.0, 잘라 내고 확대·자막을 덧입힘)</b> 풋살: “Futsal League 5v5 | M'Town Redbull vs Friday Boys”, Olenito, youtu.be/3KIPBmAjS6o · 농구: “25th October 2015 - Nottingham Wildcats vs Barking Abbey Crusaders wide angle”, Super League Basketball, youtu.be/aH6PRcV4DHE</div>
+    <div>시제품입니다. 노트북 Chrome에서 시험했습니다. 실제 휴대폰에서는 아직 재지 않았고, 노트북에서 휴대폰 CPU를 흉내 낸 모의 측정만 했습니다.</div>
+  </footer>
+  <video id="vid" playsinline muted style="position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none"></video>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script src="autocam.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const vid = $('vid'), L = $('left'), R = $('right'), lc = L.getContext('2d'), rc = R.getContext('2d');
+const S = { W: 0, H: 0, fps: 30, n: 0, roi: null, dets: null, cam: null, used: null, marks: [], added: [], picking: false, pts: [], sample: null };
+const log = m => { $('log').textContent = m + '\n' + $('log').textContent; console.log('AUTOCAM ' + m); };
+const fmt = t => { t = Math.max(0, t); return Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0'); };
+function step(k) { document.querySelectorAll('#steps li').forEach(li => { const n = +li.dataset.k; li.className = n < k ? 'done' : n === k ? 'on' : ''; }); }
+step(1);
+
+const CITIES = ['수원시','고양시','용인시','성남시','화성시','부천시','남양주시','안산시','평택시','안양시','시흥시','파주시','김포시','의정부시','광주시','하남시','광명시','군포시','양주시','오산시','이천시','안성시','구리시','의왕시','포천시','양평군','여주시','동두천시','과천시','가평군','연천군'];
+['cityA', 'cityB'].forEach((id, j) => { CITIES.forEach(c => { const o = document.createElement('option'); o.textContent = c; $(id).appendChild(o); }); $(id).selectedIndex = j ? 3 : 0; });
+
+// 예시 영상: 코트 네 모서리는 미리 찍어 둔 값(1280×720 기준)
+const SAMPLES = {
+  futsal: { url: 'samples/futsal.mp4', sport: 'futsal', roi: [[180, 380], [1240, 380], [1280, 640], [0, 640]], a: '빨강', b: '검정', ev: '풋살 리그 예시' },
+  basket: { url: 'samples/basket.mp4', sport: 'basketball', roi: [[40, 345], [1240, 345], [1280, 640], [0, 640]], a: '빨강', b: '검정', ev: '농구 리그 예시' },
+};
+
+// ---------- 사람 인식 (COCO-SSD) ----------
+let coco = null;
+async function loadModel() {
+  if (coco) return;
+  $('speed').textContent = '모델 내려받는 중…';
+  try { await tf.setBackend('webgl'); } catch (e) {}
+  coco = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+  log('COCO-SSD 준비: ' + tf.getBackend());
+}
+async function detect(src) {
+  const r = await coco.detect(src, 50, 0.3);
+  return r.filter(o => o.class === 'person').map(o => [o.bbox[0], o.bbox[1], o.bbox[0] + o.bbox[2], o.bbox[1] + o.bbox[3], o.score]);
+}
+
+// ---------- 영상·코트 ----------
+function seek(t) {
+  return new Promise(res => {
+    let done = false; const fin = () => { if (!done) { done = true; res(); } };
+    if (vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(() => fin());
+    vid.addEventListener('seeked', () => { if (!vid.requestVideoFrameCallback) fin(); else setTimeout(fin, 500); }, { once: true });
+    vid.currentTime = t;
+  });
+}
+async function loadVideo(url) {
+  vid.pause(); S.dets = S.cam = S.used = null; S.marks = []; S.added = []; S.roi = null; drawHl(); updScore(0);
+  vid.src = url;
+  await new Promise(r => vid.addEventListener('loadedmetadata', r, { once: true }));
+  S.W = vid.videoWidth; S.H = vid.videoHeight; S.n = Math.floor(vid.duration * S.fps);
+  L.height = Math.round(L.width * S.H / S.W);
+  $('empty').style.display = 'none';
+  await seek(0.05); drawLeft(0); drawRight(0);
+  ['roiBtn', 'roiAll'].forEach(id => $(id).disabled = false);
+  ['play', 'scrub', 'goalA', 'goalB', 'undo', 'recAll', 'mkLink'].forEach(id => $(id).disabled = true);
+  $('scrub').max = vid.duration; $('prog').value = 0; $('speed').textContent = '-';
+  log(`영상 ${S.W}x${S.H}, ${vid.duration.toFixed(1)}초`);
+}
+function setRoi(r, label) { S.roi = r; $('roiState').textContent = '코트: ' + label; $('analyze').disabled = false; step(3); drawLeft(vid.currentTime); }
+function startPick() { S.picking = true; S.pts = []; step(2); $('pickMsg').style.display = 'block'; $('pickMsg').textContent = '원본 화면에서 코트 네 모서리를 차례로 누르세요 (0/4)'; drawLeft(vid.currentTime); }
+$('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; S.sample = null; await loadVideo(URL.createObjectURL(f)); startPick(); };
+async function loadSample(k) {
+  const s = SAMPLES[k]; S.sample = k; $('sport').value = s.sport; $('nameA').value = s.a; $('nameB').value = s.b; $('event').value = s.ev;
+  $('speed').textContent = '예시 영상 여는 중…';
+  const blob = await (await fetch(s.url)).blob();
+  await loadVideo(URL.createObjectURL(blob)); setRoi(s.roi.map(p => [p[0] * S.W / 1280, p[1] * S.H / 720]), '4점 (예시 값)');
+}
+$('exFutsal').onclick = () => loadSample('futsal');
+$('exBasket').onclick = () => loadSample('basket');
+$('roiBtn').onclick = startPick;
+$('roiAll').onclick = () => { S.picking = false; $('pickMsg').style.display = 'none'; setRoi(null, '화면 전체'); };
+L.onclick = e => {
+  if (!S.picking) return;
+  const b = L.getBoundingClientRect(), x = (e.clientX - b.left) / b.width * S.W, y = (e.clientY - b.top) / b.height * S.H;
+  S.pts.push([x, y]); $('pickMsg').textContent = `원본 화면에서 코트 네 모서리를 차례로 누르세요 (${S.pts.length}/4)`; drawLeft(vid.currentTime);
+  if (S.pts.length === 4) { S.picking = false; $('pickMsg').style.display = 'none'; setRoi(S.pts, '4점 지정'); }
+};
+
+// ---------- 분석 ----------
+async function analyze() {
+  $('analyze').disabled = true; await loadModel();
+  const st = AC.params.det_step, dets = new Array(S.n); let k = 0, tDet = 0; const t0 = performance.now();
+  for (let i = 0; i < S.n; i += st) {
+    await seek(i / S.fps + 0.001);
+    const a = performance.now(); dets[i] = await detect(vid); tDet += performance.now() - a; k++;
+    if (k % 15 === 0) {
+      const done = i / S.n, el = (performance.now() - t0) / 1000;
+      $('prog').value = done; $('speed').textContent = `분석 ${Math.round(done * 100)}% · 남은 시간 약 ${Math.max(1, Math.round(el / done - el))}초`;
+      drawLeft(i / S.fps, dets[i]); await new Promise(r => setTimeout(r));
+    }
+  }
+  const wall = (performance.now() - t0) / 1000;
+  S.dets = dets; $('prog').value = 1;
+  $('speed').textContent = `분석 끝 · 영상 ${vid.duration.toFixed(0)}초를 ${wall.toFixed(0)}초에`;
+  log(`FPS engine=coco ep=${tf.getBackend()} detections=${k} det_fps=${(k / tDet * 1000).toFixed(2)} wall_sec=${wall.toFixed(1)} video_sec=${(S.n / S.fps).toFixed(1)}`);
+  plan();
+  ['play', 'scrub', 'goalA', 'goalB', 'undo', 'recAll', 'mkLink'].forEach(id => $(id).disabled = false);
+  $('analyze').disabled = false; step(4);
+  await seek(0.05); drawLeft(0); drawRight(0);
+  return { wall, videoSec: S.n / S.fps };
+}
+function plan() {
+  Object.assign(AC.params, AC.presets[$('sport').value]);
+  if ($('zoom').value) AC.params.crop_w = +$('zoom').value;
+  const z = 1 / AC.params.crop_w; $('zoomLab').textContent = `${Number.isInteger(z) ? z : z.toFixed(2)}배 확대(원본 폭의 ${Math.round(AC.params.crop_w * 100)}%), 점수판 자막`;
+  const r = AC.targets(S.dets, S.n, S.W, S.H, S.fps, S.roi); S.used = r.used;
+  const c = AC.camera(r.T, S.W, S.H, S.fps, AC.params.lookahead);
+  S.cam = c.cam; S.cw = c.cw; S.ch = c.ch;
+}
+$('analyze').onclick = () => analyze();
+$('sport').onchange = $('zoom').onchange = () => { if (S.dets) { plan(); drawLeft(vid.currentTime); drawRight(vid.currentTime); } };
+
+// ---------- 점수 ----------
+const scoreAt = t => { let a = 0, b = 0; S.marks.forEach(m => { if (m.t <= t) m.team === 'A' ? a++ : b++; }); return [a, b]; };
+function updScore(t) { const [a, b] = scoreAt(t); $('scoreNow').textContent = `${a} : ${b}`; }
+function mark(team) {
+  const m = { t: vid.currentTime, team }; S.marks.push(m); S.added.push(m); S.marks.sort((x, y) => x.t - y.t);
+  log(`득점 ${team === 'A' ? $('nameA').value : $('nameB').value} ${vid.currentTime.toFixed(1)}초`);
+  drawHl(); updScore(vid.currentTime); drawRight(vid.currentTime); step(5);
+}
+$('goalA').onclick = () => mark('A');
+$('goalB').onclick = () => mark('B');
+$('undo').onclick = () => { const m = S.added.pop(); if (!m) return; S.marks.splice(S.marks.indexOf(m), 1); drawHl(); updScore(vid.currentTime); drawRight(vid.currentTime); };
+['nameA', 'nameB'].forEach(id => $(id).oninput = () => { drawHl(); drawRight(vid.currentTime); });
+
+// ---------- 그리기 ----------
+function drawLeft(t, dd) {
+  if (!S.W) return;
+  const i = Math.min(S.n - 1, Math.max(0, Math.round(t * S.fps))), sx = L.width / S.W, sy = L.height / S.H;
+  lc.drawImage(vid, 0, 0, L.width, L.height);
+  const poly = S.picking ? S.pts : S.roi;
+  if (poly && poly.length) {
+    lc.strokeStyle = '#5ab0ff'; lc.lineWidth = 2; lc.beginPath();
+    poly.forEach((p, k) => k ? lc.lineTo(p[0] * sx, p[1] * sy) : lc.moveTo(p[0] * sx, p[1] * sy));
+    if (!S.picking) lc.closePath(); lc.stroke();
+    lc.fillStyle = '#5ab0ff'; poly.forEach(p => { lc.beginPath(); lc.arc(p[0] * sx, p[1] * sy, 4, 0, 7); lc.fill(); });
+  }
+  const boxes = dd || (S.used && S.used[i]) || [];
+  lc.strokeStyle = '#38d36b'; lc.lineWidth = 1.5;
+  boxes.forEach(b => lc.strokeRect(b[0] * sx, b[1] * sy, (b[2] - b[0]) * sx, (b[3] - b[1]) * sy));
+  if (S.cam) { const c = S.cam[i]; lc.strokeStyle = '#ffd400'; lc.lineWidth = 3; lc.strokeRect((c[0] - S.cw / 2) * sx, (c[1] - S.ch / 2) * sy, S.cw * sx, S.ch * sy); }
+}
+function scoreboard(ctx, t, x, y, s) {
+  const [a, b] = scoreAt(t), na = $('nameA').value, nb = $('nameB').value;
+  ctx.save(); ctx.font = `700 ${22 * s}px "Apple SD Gothic Neo","Noto Sans KR",sans-serif`; ctx.textBaseline = 'middle';
+  const wa = Math.max(ctx.measureText(na).width, 40 * s), wb = Math.max(ctx.measureText(nb).width, 40 * s), h = 40 * s, pad = 12 * s, sw = 36 * s;
+  const W = pad + wa + pad + sw * 2 + pad + wb + pad + 70 * s;
+  if (x < 0) x = (-x - W) / 2;  // 음수 x = 그 폭 안에서 가운데 정렬
+  ctx.fillStyle = 'rgba(20,22,26,.86)'; ctx.fillRect(x, y, W, h);
+  let cx = x + pad; ctx.fillStyle = '#d2451e'; ctx.fillRect(x, y, 5 * s, h);
+  ctx.fillStyle = '#fff'; ctx.fillText(na, cx, y + h / 2); cx += wa + pad;
+  ctx.fillStyle = '#fff'; ctx.fillRect(cx, y + 5 * s, sw * 2, h - 10 * s);
+  ctx.fillStyle = '#14161a'; ctx.textAlign = 'center'; ctx.font = `800 ${24 * s}px "Apple SD Gothic Neo","Noto Sans KR",sans-serif`;
+  ctx.fillText(a, cx + sw / 2, y + h / 2 + 1); ctx.fillText(b, cx + sw * 1.5, y + h / 2 + 1);
+  ctx.textAlign = 'left'; ctx.font = `700 ${22 * s}px "Apple SD Gothic Neo","Noto Sans KR",sans-serif`; cx += sw * 2 + pad;
+  ctx.fillStyle = '#fff'; ctx.fillText(nb, cx, y + h / 2); cx += wb + pad;
+  ctx.fillStyle = '#cfcac0'; ctx.font = `600 ${19 * s}px ui-monospace,Menlo,monospace`; ctx.fillText(fmt(t), cx, y + h / 2);
+  ctx.restore();
+}
+function drawRight(t) {
+  if (!S.W) return;
+  if (!S.cam) { rc.drawImage(vid, 0, 0, R.width, R.height); rc.fillStyle = 'rgba(0,0,0,.55)'; rc.fillRect(0, 0, R.width, R.height); rc.fillStyle = '#eee'; rc.font = '600 26px "Apple SD Gothic Neo",sans-serif'; rc.textAlign = 'center'; rc.fillText('분석이 끝나면 여기에 중계 화면이 나옵니다', R.width / 2, R.height / 2); rc.textAlign = 'left'; return; }
+  const i = Math.min(S.n - 1, Math.max(0, Math.round(t * S.fps))), c = S.cam[i];
+  rc.drawImage(vid, c[0] - S.cw / 2, c[1] - S.ch / 2, S.cw, S.ch, 0, 0, R.width, R.height);
+  scoreboard(rc, t, 20, 18, 1);
+  rc.fillStyle = 'rgba(255,255,255,.75)'; rc.font = '600 16px "Apple SD Gothic Neo",sans-serif'; rc.textAlign = 'right'; rc.fillText('무인 캠', R.width - 16, R.height - 14); rc.textAlign = 'left';
+}
+function tick() {
+  drawLeft(vid.currentTime); drawRight(vid.currentTime); updScore(vid.currentTime);
+  $('scrub').value = vid.currentTime; $('clock').textContent = fmt(vid.currentTime);
+  if (!vid.paused && !vid.ended) vid.requestVideoFrameCallback(tick);
+  else $('play').textContent = '▶ 재생';
+}
+$('play').onclick = async () => { if (vid.paused) { await vid.play(); $('play').textContent = '❚❚ 멈춤'; vid.requestVideoFrameCallback(tick); } else vid.pause(); };
+$('scrub').oninput = async () => { vid.pause(); await seek(+$('scrub').value); tick(); };
+
+// ---------- 녹화 ----------
+let busy = false;
+function recordCanvas(canvas, startT, endT, render) {
+  return new Promise(async res => {
+    const st = canvas.captureStream(30);
+    const mime = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+    const mr = new MediaRecorder(st, { mimeType: mime, videoBitsPerSecond: 6e6 }); const chunks = [];
+    mr.ondataavailable = e => chunks.push(e.data);
+    mr.onstop = () => res(new Blob(chunks, { type: mime }));
+    vid.pause(); await seek(startT); render(startT); mr.start();
+    vid.playbackRate = window.REC_RATE || 1;  // 시험 녹화용 느린 재생(기본 1배)
+    await vid.play();
+    let stopped = false; const stop = () => { if (stopped) return; stopped = true; vid.pause(); vid.playbackRate = 1; mr.stop(); };
+    vid.addEventListener('ended', stop, { once: true });
+    const loop = () => { if (stopped) return; render(vid.currentTime); if (vid.currentTime < endT - 0.02 && !vid.ended) vid.requestVideoFrameCallback(loop); else stop(); };
+    vid.requestVideoFrameCallback(loop);
+  });
+}
+function save(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name + (blob.type.includes('mp4') ? '.mp4' : '.webm'); a.click(); }
+$('recAll').onclick = async () => {
+  if (busy) return; busy = true; log('중계 화면 녹화 중(실제 재생 속도)…');
+  const b = await recordCanvas(R, 0, vid.duration, t => { drawLeft(t); drawRight(t); updScore(t); });
+  save(b, '중계화면'); log('저장 완료'); busy = false;
+};
+function drawHl() {
+  const ul = $('hl'); ul.innerHTML = '';
+  if (!S.marks.length) { ul.innerHTML = '<li class="hint">득점을 표시하면 여기에 생깁니다.</li>'; return; }
+  S.marks.forEach(m => {
+    const [a, b] = scoreAt(m.t), li = document.createElement('li');
+    li.innerHTML = `<span class="t">${fmt(m.t)} ${m.team === 'A' ? $('nameA').value : $('nameB').value} 득점 (${a}:${b})</span>`;
+    const bt = document.createElement('button'); bt.textContent = '세로 클립 저장 (15초)'; bt.onclick = () => shorts(m); li.appendChild(bt); ul.appendChild(li);
+  });
+}
+async function shorts(m) {
+  if (busy) return; busy = true;
+  const c = $('shortCv'), cx = c.getContext('2d'); $('shortBox').style.display = 'block';
+  const t0 = Math.max(0, m.t - 12), t1 = Math.min(vid.duration, m.t + 3), who = m.team === 'A' ? $('nameA').value : $('nameB').value;
+  // 9:16로 좁게 자르면 공을 자주 놓친다. 원본 높이 전체를 한 변으로 하는 정사각형을 카메라 가로 위치에 맞춰 잘라
+  // 화면 높이의 56%(540px)를 경기 장면으로 채우고, 위에는 팀·득점 글자, 아래에는 큰 점수판을 둔다.
+  const sq = Math.min(S.H, S.W);
+  const b = await recordCanvas(c, t0, t1, tt => {
+    const i = Math.min(S.n - 1, Math.round(tt * S.fps)), k = S.cam[i], x0 = Math.max(0, Math.min(S.W - sq, k[0] - sq / 2));
+    cx.filter = 'blur(18px) brightness(0.45)';
+    cx.drawImage(vid, x0 + sq * 0.2, 0, sq * 0.6, sq * 1.07, -20, -20, 580, 1000);
+    cx.filter = 'none';
+    cx.drawImage(vid, x0, (S.H - sq) / 2, sq, sq, 0, 190, 540, 540);
+    cx.fillStyle = '#fff'; cx.font = '800 48px "Apple SD Gothic Neo","Noto Sans KR",sans-serif'; cx.textAlign = 'center';
+    cx.fillText(tt >= m.t ? `${who} 득점!` : `${who} 공격`, 270, 100);
+    cx.font = '600 25px "Apple SD Gothic Neo","Noto Sans KR",sans-serif'; cx.fillStyle = '#ddd'; cx.fillText($('event').value, 270, 150);
+    cx.textAlign = 'left'; scoreboard(cx, tt, -540, 775, 1.45);
+    cx.fillStyle = 'rgba(255,255,255,.7)'; cx.font = '600 20px "Apple SD Gothic Neo",sans-serif'; cx.textAlign = 'center'; cx.fillText('무인 캠', 270, 925); cx.textAlign = 'left';
+  });
+  save(b, `하이라이트_${fmt(m.t).replace(':', '분')}초`); log('세로 클립 저장'); busy = false;
+}
+
+// ---------- 응원 링크 (예시) ----------
+$('mkLink').onclick = () => {
+  const [a, b] = scoreAt(vid.duration), q = new URLSearchParams({ e: $('event').value, a: $('cityA').value, b: $('cityB').value, ta: $('nameA').value, tb: $('nameB').value, s: `${a}-${b}`, g: S.marks.map(m => m.team + m.t.toFixed(1)).join(',') });
+  if (S.sample === 'basket') q.set('v', 'samples/basket_goal.mp4');  // 예시: 시제품이 미리 만들어 둔 세로 클립
+  const url = new URL('cheer.html#' + q.toString(), location.href).href;
+  $('linkOut').style.display = 'block';
+  $('linkOut').innerHTML = `<b>${$('cityA').value} 대 ${$('cityB').value}</b> 응원 링크가 만들어졌습니다.<br><a href="${url}" target="_blank">예시 화면 열기 →</a> · <a href="#" id="cpLink">링크 복사</a>`;
+  $('cpLink').onclick = e => { e.preventDefault(); navigator.clipboard?.writeText(url).then(() => { $('cpLink').textContent = '복사됨'; }); };
+};
+
+// ---------- 자동 시험용 ----------
+window.autocamTest = async (url, roi, sport) => {
+  $('sport').value = sport || 'futsal';
+  const blob = await (await fetch(url)).blob();
+  await loadVideo(URL.createObjectURL(blob)); setRoi(roi || null, roi ? '4점' : '화면 전체');
+  const r = await analyze();
+  return { ...r, cam: S.cam.filter((_, i) => i % 3 === 0), W: S.W, H: S.H };
+};
+</script>
+</body>
+</html>
